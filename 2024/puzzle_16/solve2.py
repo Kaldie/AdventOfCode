@@ -1,132 +1,111 @@
+import copy
+import math
 import pathlib
 
 
-def find_walls(lines: list[str]):
-    walls = find_chars(lines, "#",double=True)
-    # unpack
-    return [wall for wallx in walls for wall in wallx]
-
-
-def find_boxes(lines: list[str]):
-    return find_chars(lines, "O", double=True)
-
-
-def find_robot(lines: list[str]):
-    robots = find_chars(lines, "@",double=False)
-    assert len(robots) == 1
-    return robots[0]
-
-
-def find_chars(lines: list[str], char: str, double: bool = False):
-    elements: list[tuple[tuple[int, int], tuple[int, int]]] = []
+def find_element(lines: list[str], element: str):
+    positions = []
     for i, line in enumerate(lines):
-        for j, v in enumerate(line):
-            if v == char:
-                if double:
-                    elements.append(((i, j * 2), (i, j * 2 + 1)))
-                else:
-                    elements.append((i, j * 2))
-
-    return elements
-
-
-def print_state(robot, boxes, walls):
-    max_cor = max([wall[0] for wall in walls]), max([wall[1] for wall in walls])
-
-    for i in range(max_cor[0] + 1):
-        line = ""
-        for j in range( max_cor[1] + 1):
-            if (i, j) == robot:
-                line += "@"
-            elif (i, j) in walls:
-                line += "#"
-            elif ((i, j), (i, j + 1)) in boxes:
-                line += "[]"
-            elif ((i, j-1), (i, j)) in boxes:
-                continue
-            else:
-                line += "."
-        print(line)
-    print()
-
-
-def move_robot(
-    char: str,
-    robot: tuple[int, int],
-    boxes: list[tuple[int, int]],
-    walls: list[tuple[int, int]],
-):
-    if char == "^":
-        dir = [-1, 0]
-    if char == ">":
-        dir = [0, 1]
-    if char == "v":
-        dir = [1, 0]
-    if char == "<":
-        dir = [0, -1]
-
-    boxes_to_move = set()
-    new_positions = [robot]
-    run_into_wall = False
-
-    unpacked_boxes = [box for boxx in boxes for box in boxx]
-
-    while len(new_positions) > 0:
-        # untill we find a wall or an open spot
-        positions_to_check = [
-            (position_to_check[0] + dir[0], position_to_check[1] + dir[1])
-            for position_to_check in new_positions
-        ]
-
-        new_positions = set()
-
-        for position_to_check in positions_to_check:
-            if position_to_check in walls:
-                run_into_wall = True
-                new_positions = []  # force we break out of while
+        index = -1
+        while True:
+            try:
+                index = line[index + 1 :].index(element) + index + 1
+                positions.append((i, index))
+            except:
                 break
-            elif position_to_check in unpacked_boxes:
-                for index, box_pair in enumerate(boxes):
-                    if position_to_check in box_pair:
-                        boxes_to_move.add(index)
+    return positions
 
-                        for index, box in enumerate(box_pair):
-                            box_dir=(box[0]+dir[0], box[1]+dir[1])
-                            box_index = 1 if index==0 else 0
-                            if box_dir != box_pair[box_index]:
-                                new_positions.add(box)
 
-    if not run_into_wall:
-        robot = (robot[0] + dir[0], robot[1] + dir[1])
-        for box_index in boxes_to_move:
-            box = boxes[box_index]
-            boxes[box_index] = (
-                (box[0][0] + dir[0], box[0][1] + dir[1]),
-                (box[1][0] + dir[0], box[1][1] + dir[1]),
-            )
+def get_score_increase(cur_dir, next_dir):
+    dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    cur_index = dirs.index(cur_dir)
+    next_index = dirs.index(next_dir)
+    score = 1
 
-    return robot
+    left_turns = 0
+    right_turns = 0
+
+    left_index = copy.copy(cur_index)
+    right_index = copy.copy(cur_index)
+
+    while not (left_index == next_index) and not (right_index == next_index):
+        left_index = left_index + 1 if left_index + 1 < len(dirs) else 0
+        left_turns += 1
+
+        right_index = right_index - 1 if right_index - 1 >= 0 else 3
+        right_turns += 1
+
+    return score + min(right_turns, left_turns) * 1000
 
 
 def solve(lines: list[str]):
-    for index, line in enumerate(lines):
-        if len(line.strip()) == 0:
-            split = index
-            break
 
-    walls = find_walls(lines[:split])
-    boxes = find_boxes(lines[:split])
-    robot = find_robot(lines[:split])
+    start = find_element(lines, "S")
 
-    for line in lines[split:]:
-        for char in line:
-            robot=move_robot(char,robot,boxes,walls)
+    assert len(start) == 1
+    start = start[0]
 
-    total = 0
-    for box,_ in boxes:
-        total += 100 * box[0] + box[1]
+    dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    options = [(start, 0, (0, 1), [start])] 
+    min_score = 135536
+    solutions = []
+    seen={}
+    i=0
 
-    return total
+    while len(options) > 0:
+        # print(options)
+        # print("len options: ", len(options))
+        option = options.pop()
+
+        if option[1] > min_score:
+            continue
+
+        if i % 10000==0:
+            print(len(options), option[0])
+        
+        i+=1
+
+        next_steps = [(option[0][0] + dir[0], option[0][1] + dir[1]) for dir in dirs]
+        next_chars = [lines[x][y] for x, y in next_steps]
+
+        for next_step, next_char, next_dir in zip(next_steps, next_chars, dirs):
+
+            if next_char == "#":
+                continue
+
+            if next_step in option[3]:
+                continue
+
+            new_score = option[1] + get_score_increase(option[2], next_dir)
+
+            if new_score > min_score:
+                continue
+
+            if next_step in seen:
+                if (seen[next_step] + 2000)<  new_score:
+                    continue
+
+            if next_char == "E":
+                min_score = min(min_score, new_score)
+                solutions.append((new_score, option[3] + [next_step]))
+
+            elif next_char == ".":
+                options.append(
+                    (next_step, new_score, next_dir, option[3] + [next_step])
+                )
+                seen[next_step]=new_score
+
+    best_locations = set()
+    min_score = min([x[0] for x in solutions])
+    for solution in solutions:
+        if solution[0] > min_score:
+            continue
+
+        print(solution, "\n")
+        for position in solution[1]:
+            best_locations.add(position)
+
+    return len(best_locations)
 
 
 if __name__ == "__main__":
